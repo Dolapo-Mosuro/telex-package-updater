@@ -1,18 +1,19 @@
 from fastapi.testclient import TestClient
 from app.main import app
 import os
+import pytest
 
 client = TestClient(app)
-os.environ["API_KEY"] = "test_key"
+os.environ["TELEX_API_KEY"] = "test-key-123"  # Fixed var name
 
 def test_unauthorized_access():
-    response = client.post("/check-updates")
-    assert response.status_code == 401
+    response = client.get("/check/pip/requests")
+    assert response.status_code == 403
 
-def test_authorized_access():
-    response = client.post(
-        "/check-updates",
-        headers={"x-api-key": "test_key"}
+def test_valid_check():
+    response = client.get(
+        "/check/pip/requests",
+        headers={"X-API-Key": "test-key-123"}  # Correct header
     )
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert "current" in response.json()

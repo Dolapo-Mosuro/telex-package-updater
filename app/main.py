@@ -1,22 +1,30 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from apscheduler.schedulers.background import BackgroundScheduler
 from .config import validate_api_key
 from .notifier import check_pip, check_npm, check_cargo
+from .utils import get_installed_version
 import json
 import os
 
 app = FastAPI()
-packages = json.loads(os.getenv("TRACKED_PACKAGES"))
+packages = json.loads(os.getenv("TRACKED_PACKAGES", "{}"))
+
+# Manager to function mapping
+CHECKERS = {
+    "pip": check_pip,
+    "npm": check_npm,
+    "cargo": check_cargo
+}
 
 def check_updates():
+    """Scheduled update checker with proper version tracking"""
     for manager in ["pip", "npm", "cargo"]:
         for pkg in packages.get(manager, []):
-            current_version = "0.0.0"  # Replace with real version check
-            checker = globals()[f"check_{manager}"]
-            latest_version = checker(pkg)
+            current = get_installed_version(pkg, manager)
+            latest = CHECKERS[manager](pkg)
             
-            if latest_version and latest_version != current_version:
-                message = f"{pkg} update: {current_version} → {latest_version}"
+            if current and latest and current != latest:
+                message = f"{pkg} update: {current} → {latest}"
                 requests.post(
                     os.getenv("TELEX_WEBHOOK_URL"),
                     json={"text": message},
@@ -29,7 +37,7 @@ scheduler.start()
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "scheduled_jobs": len(scheduler.get_jobs())}
+    return {"status": "ok", "jobs": scheduler.get_jobs()}
 
 @app.get("/check/{manager}/{package}")
 async def manual_check(
@@ -37,7 +45,16 @@ async def manual_check(
     package: str,
     auth: str = Depends(validate_api_key)
 ):
-    checker = globals().get(f"check_{manager}")
-    if not checker:
-        return {"error": "Invalid package manager"}
-    return {"version": checker(package)}
+    """Endpoint with proper manager validation"""
+    if manager not in CHECKERS:
+        raise HTTPException(status_code=400, detail="Invalid package manager")
+    
+    current = get_installed_version(package, manager)
+    latest = CHECKERS[manager](package)
+    
+    return {
+        "package": package,
+        "current": current,
+        "latest": latest,
+        "update_available": current != latest if all([current, latest]) else None
+    }
