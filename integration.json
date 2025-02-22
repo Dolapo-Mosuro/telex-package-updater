@@ -1,0 +1,15 @@
+{
+	"name": "Package Update Notifier",
+	"type": "interval",
+	"description": "Tracks pip/npm/cargo package updates",
+	"endpoint": "YOUR_DOMAIN/health",
+	"config": {
+		"interval": "daily",
+		"package_managers": ["pip", "npm", "cargo"]
+	},
+	"auth": {
+		"type": "api_key",
+		"key": "X-API-Key",
+		"value": "{{TELEX_API_KEY}}"
+	}
+}
