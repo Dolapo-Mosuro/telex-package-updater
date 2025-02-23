@@ -3,6 +3,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from .config import validate_api_key
 from .notifier import check_pip, check_npm, check_cargo
 from .utils import get_installed_version
+from app.config import validate_api_key
+
 import json
 import os
 
