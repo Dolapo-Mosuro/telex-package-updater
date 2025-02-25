@@ -1,14 +1,26 @@
 {
-	"name": "Package Update Notifier",
-	"type": "interval",
-	"description": "Tracks pip/npm/cargo package updates",
-	"endpoint": "https://your-domain.com/health",
-	"config": {
-		"interval": "daily",
-		"package_managers": ["pip", "npm", "cargo"]
+	"descriptions": {
+		"app_name": "Package Update Notifier",
+		"app_description": "Monitors pip/npm/cargo package updates",
+		"app_url": "YOUR_RENDER_URL",
+		"app_logo": "https://i.imgur.com/lZqvffp.png"
 	},
-	"auth": {
-		"type": "api_key",
-		"key": "X-API-Key"
-	}
+	"integration_type": "interval",
+	"settings": [
+		{
+			"id": "tracked_packages",
+			"label": "Packages to Track",
+			"type": "json",
+			"required": true,
+			"default": "{\"pip\": [], \"npm\": [], \"cargo\": []}"
+		},
+		{
+			"id": "interval",
+			"label": "Check Interval",
+			"type": "cron",
+			"required": true,
+			"default": "0 0 * * *"
+		}
+	],
+	"tick_url": "YOUR_RENDER_URL/tick"
 }

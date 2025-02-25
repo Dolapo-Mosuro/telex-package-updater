@@ -1,62 +1,89 @@
-from fastapi import FastAPI, Depends, HTTPException
-from apscheduler.schedulers.background import BackgroundScheduler
-from .config import validate_api_key
-from .notifier import check_pip, check_npm, check_cargo
-from .utils import get_installed_version
-from app.config import validate_api_key
-
+from fastapi import FastAPI, BackgroundTasks, Request, Depends
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List
+import httpx
+import asyncio
 import json
-import os
+from .config import validate_api_key
 
 app = FastAPI()
-packages = json.loads(os.getenv("TRACKED_PACKAGES", "{}"))
 
-# Manager to function mapping
-CHECKERS = {
-    "pip": check_pip,
-    "npm": check_npm,
-    "cargo": check_cargo
-}
+class Setting(BaseModel):
+    id: str  # Added
+    label: str
+    type: str
+    required: bool
+    default: str
 
-def check_updates():
-    """Scheduled update checker with proper version tracking"""
-    for manager in ["pip", "npm", "cargo"]:
-        for pkg in packages.get(manager, []):
-            current = get_installed_version(pkg, manager)
-            latest = CHECKERS[manager](pkg)
-            
-            if current and latest and current != latest:
-                message = f"{pkg} update: {current} → {latest}"
-                requests.post(
-                    os.getenv("TELEX_WEBHOOK_URL"),
-                    json={"text": message},
-                    headers={"X-API-Key": os.getenv("TELEX_API_KEY")}
-                )
+class MonitorPayload(BaseModel):
+    channel_id: str
+    return_url: str
+    settings: List[Setting]
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(check_updates, 'interval', hours=24)
-scheduler.start()
-
-@app.get("/health")
-async def health_check():
-    return {"status": "ok", "jobs": scheduler.get_jobs()}
-
-@app.get("/check/{manager}/{package}")
-async def manual_check(
-    manager: str,
-    package: str,
-    auth: str = Depends(validate_api_key)
-):
-    """Endpoint with proper manager validation"""
-    if manager not in CHECKERS:
-        raise HTTPException(status_code=400, detail="Invalid package manager")
-    
-    current = get_installed_version(package, manager)
-    latest = CHECKERS[manager](package)
-    
+@app.get("/integration.json")
+def get_integration_json(request: Request):
+    base_url = str(request.base_url).rstrip("/")
     return {
-        "package": package,
-        "current": current,
-        "latest": latest,
-        "update_available": current != latest if all([current, latest]) else None
+        "descriptions": {
+            "app_name": "Package Update Notifier",
+            "app_description": "Tracks updates for dependencies in a project and sends changelogs to Telex.",
+            "app_url": base_url,
+            "app_logo": "https://i.imgur.com/lZqvffp.png"
+        },
+        "integration_type": "interval",
+        "settings": [
+            {
+                "id": "tracked_packages",
+                "label": "Packages to Track",
+                "type": "json",
+                "required": True,
+                "default": json.dumps({"pip": [], "npm": [], "cargo": []})
+            },
+            {
+                "id": "interval",
+                "label": "Check Interval",
+                "type": "cron",  # Changed from text
+                "required": True,
+                "default": "0 0 * * *"  # Daily at midnight
+            }
+        ],
+        "tick_url": f"{base_url}/tick"
     }
+
+@app.post("/tick", status_code=202)
+def monitor(
+    payload: MonitorPayload,
+    background_tasks: BackgroundTasks,
+    api_key: str = Depends(validate_api_key)  # Added auth
+):
+    background_tasks.add_task(monitor_task, payload)
+    return {"status": "accepted"}
+
+async def monitor_task(payload: MonitorPayload):
+    tracked_packages = {}
+    for setting in payload.settings:
+        if setting.id == "tracked_packages":
+            try:
+                tracked_packages = json.loads(setting.default)  # Fixed
+            except json.JSONDecodeError as e:
+                print(f"Invalid JSON: {e}")
+                return
+
+    results = {}
+    for manager, packages in tracked_packages.items():
+        results[manager] = await check_package_updates(manager, packages)
+
+    updates = [
+        f"{pkg}: {ver}" for manager in results.values() 
+        for pkg, ver in manager.items() if "Error" not in ver
+    ]
+    
+    data = {
+        "text": "Package Updates:\n" + "\n".join(updates),  # Telex-compatible
+        "username": "Package Notifier",
+        "icon_url": "https://i.imgur.com/lZqvffp.png"
+    }
+
+    async with httpx.AsyncClient() as client:
+        await client.post(payload.return_url, json=data)

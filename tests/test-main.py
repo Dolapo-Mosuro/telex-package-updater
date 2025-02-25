@@ -1,20 +1,33 @@
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
-import os
-import pytest
+
 
 client = TestClient(app)
-os.environ["TELEX_API_KEY"] = "test-key-123"  # Fixed var name
 
-def test_unauthorized_access():
-	response = client.get("/check/pip/requests")
-	assert response.status_code == 403
+def test_get_integration_json():
+    response = client.get("/integration.json")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["data"]["integration_type"] == "interval"
+    assert "tick_url" in data["data"]
 
-def test_valid_check():
-	api_key = os.getenv("TELEX_API_KEY", "test-key-123")  # Use the correct API key
-	response = client.get(
-		"/check/pip/requests",
-		headers={"X-API-Key": "test-key-123"}  # Correct header
-	)
-	assert response.status_code == 200
-	assert "current" in response.json()
+def test_monitor_tick_with_mocked_return_url(monkeypatch):
+    mock_post = lambda url, json: None
+    monkeypatch.setattr("httpx.AsyncClient.post", mock_post)
+
+    payload = {
+        "channel_id": "test-channel",
+        "return_url": "https://mock.telex.im/v1/return/test-channel",
+        "settings": [
+            {
+                "label": "tracked_packages",
+                "type": "json",
+                "required": True,
+                "default": "{\"pip\": [\"requests\"], \"npm\": [\"react\"], \"cargo\": []}"
+            }
+        ]
+    }
+
+    response = client.post("/tick", json=payload)
+    assert response.status_code == 200

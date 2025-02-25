@@ -1,47 +1,40 @@
+from typing import Optional, Dict, Any
 import subprocess
 import re
+import json
 import logging
-from typing import Optional
 
-logging.basicConfig(level=logging.INFO)
-
-def log_errors(func):
-    """Decorator for consistent error logging"""
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logging.error(f"Error in {func.__name__}: {str(e)}")
-            raise
-    return wrapper
+def parse_version(output: str, pattern: str) -> Optional[str]:
+    """Universal version parser"""
+    try:
+        match = re.search(pattern, output)
+        return match.group(1) if match else None
+    except Exception as e:
+        logging.error(f"Version parsing failed: {str(e)}")
+        return None
 
 def get_installed_version(pkg: str, manager: str) -> Optional[str]:
-    """Get currently installed version"""
+    """Improved version check with common parser"""
+    commands = {
+        "pip": ["pip", "show", pkg],
+        "npm": ["npm", "list", pkg, "--depth=0", "--json"],
+        "cargo": ["cargo", "tree", "--quiet", "--package", pkg, "--depth", "0"]
+    }
+    
+    patterns = {
+        "pip": r"Version: (.*)",
+        "npm": rf'"dependencies": {{"{pkg}": {{"version": "(.*?)"}}}}',
+        "cargo": rf"{pkg} v(.*)"
+    }
+    
     try:
-        if manager == "pip":
-            result = subprocess.run(
-                ["pip", "show", pkg],
-                capture_output=True,
-                text=True
-            )
-            return re.search(r"Version: (.*)", result.stdout).group(1)
-        
-        elif manager == "npm":
-            result = subprocess.run(
-                ["npm", "list", pkg, "--depth=0", "--json"],
-                capture_output=True,
-                text=True
-            )
-            return json.loads(result.stdout)["dependencies"][pkg]["version"]
-        
-        elif manager == "cargo":
-            result = subprocess.run(
-                ["cargo", "tree", "--quiet", "--package", pkg, "--depth", "0"],
-                capture_output=True,
-                text=True
-            )
-            return re.search(rf"{pkg} v(.*)", result.stdout).group(1)
-            
+        result = subprocess.run(
+            commands[manager],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return parse_version(result.stdout, patterns[manager])
     except Exception as e:
         logging.error(f"Version check failed for {pkg}: {str(e)}")
         return None

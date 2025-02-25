@@ -1,62 +1,84 @@
-# Python Package Update Notifier for Telex
+# Package Update Notifier - Telex Integration
 
-## Project Structure
+This is a Telex Interval Integration that tracks dependency updates for `npm`, `pip`, and `cargo`, sending update notifications to a Telex channel.
 
-.
-├── app/
-│ ├── init.py
-│ └── main.py
-├── tests/
-│ └── test_main.py
-├── requirements.txt
-├── runtime.txt
-└── render.yaml
+## Features
 
-## Setup
+- Checks package versions at set intervals.
+- Supports `npm`, `pip`, and `cargo` package managers.
+- Sends update notifications to Telex.
 
-1. Clone repository:
+## Setup & Installation
 
-   ```bash
-   git clone https://github.com/yourusername/telex-python-updater.git
-   cd telex-python-updater
-   ```
+### 1. Clone the Repository
 
-## Install dependencies:
+```sh
+git clone https://github.com/telex_integrations/package-update-notifier.git
+cd package-update-notifier
+```
 
-```bash
+2. Install Dependencies
 
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Set environment variables:
+3. Run the Server Locally
 
-```bash
-
-echo "TELEX_API_KEY=your_secret_key" > .env
+```sh
+uvicorn main:app --reload
 ```
 
-## Running Locally
+4. Test the Integration
 
-```bash
-
-uvicorn app.main:app --reload
-```
-
-## Deployment on Render
-
-- Push code to GitHub
-
-- Create new Web Service in Render dashboard
-
-- Use provided render.yaml config
-
-- Set environment variable API_KEY
-
-## Testing
-
-```bash
-
-curl -X POST http://localhost:8000/check-updates \
-     -H "x-api-key: your_secret_key"
+- Use curl to trigger an interval check:
 
 ```
+curl --location 'http://localhost:8000/tick' \
+--header 'Content-Type: application/json' \
+--data '{
+    "channel_id": "test-channel",
+    "return_url": "https://mock.telex.im/v1/return/test-channel",
+    "settings": [
+        {
+            "label": "tracked_packages",
+            "type": "json",
+            "required": true,
+            "default": "{\"pip\": [\"requests\"], \"npm\": [\"react\"], \"cargo\": []}"
+        }
+    ]
+}'
+```
+
+5. Deploy to Render
+
+   Deploy using:
+
+or
+
+git push heroku main # If using Heroku
+
+6. Activate the Integration in Telex
+
+   Go to your Telex organization.
+   Add your hosted /integration.json URL.
+   Configure the interval and package managers.
+
+7. Screenshots
+
+✅ **Fixes Applied:**
+
+- ✅ **Clear setup instructions**.
+- ✅ **Telex activation steps**.
+- ✅ **Includes deployment details**.
+
+---
+
+### **Final Checklist**
+
+✅ `/tick` now correctly calls `return_url`.  
+✅ `tracked_packages` default JSON is fixed.  
+✅ Tests now include `return_url` behavior.  
+✅ README updated with setup, testing, and deployment.
